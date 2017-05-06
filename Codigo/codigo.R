@@ -187,7 +187,9 @@ MXN_USD <- read_csv("./Datos/MXN_USD1.csv")[1:288,2] %>%
 #  theme_economist() 
 ##### Componentes Principales ####
 info <- cbind(MX_CPI,MX_DRATE,MX_EXP,MX_GCE,MX_GDP,MX_GDPDEF,MX_HCE,MX_IMPPRICE,MX_INDP,MX_IPC,MX_M1,MX_M2,MX_M3,MX_M4,MX_MANUFP,MX_MINP,MX_MMRATE,MXN_USD,MX_PETRP,MX_PPI,MX_WAGES,US_BPLRATE,US_CPI,US_DRATE,US_EMP,US_EXP,US_FFRATE,US_GCE,US_GDP,US_GDPDEF,US_GNI,US_HCE,US_IMP,US_IMPPRICE,US_INDP,US_M1,US_M2,US_M3,US_MB,US_PETRP,US_PPI,US_RHP,US_SP,US_TBRATE,US_WAGES) %>% as_tibble
-comp <- info %>% prcomp(scale=T) %>% predict %>% .[,1:10] %>% as_tibble
+nfac <- 10
+comp <- info %>% prcomp(scale=T) %>% predict %>% .[,1:nfac] %>% as_tibble
+pca <- info %>% prcomp(scale=T) 
 ##### VAR ####
 ## Las variables se orden la de las más exógenas a las más endógenas
 ## Estados Unidos
@@ -209,40 +211,38 @@ y <- comp %>%
 model <- VAR(y)
 ##### Impulso respuesta ####
 impulse  <- c("Int_US","Int_MX")
-response <- names(y)
-nombres  <- names(y)
 
-df <- get_irf(model,impulse,response,nombres)
+df <- get_irf(model,impulse,pca) 
 
-ggplot(data=df %>% filter(shock==impulse[1]),aes(y=value,x=cons))+
+ggplot(data=df %>% filter(shock==impulse[1]),aes(y=pred,x=cons))+
   geom_line(colour="blue")+
-  geom_line(aes(y=value_up),colour="red",linetype = "dashed")+
-  geom_line(aes(y=value_low),colour="red",linetype = "dashed")+
-  geom_ribbon(aes(x=cons,ymin=value_low,ymax=value_up),alpha=.25,show.legend=FALSE)+
+  geom_line(aes(y=upper),colour="red",linetype = "dashed")+
+  geom_line(aes(y=lower),colour="red",linetype = "dashed")+
+  geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
   labs(title="Shock a la Tasa de Interés de E.U.A.",x="",y="",subtitle="Funciones Impulso-Respuesta")+
-  facet_wrap(~nombres,ncol=2)+
+  facet_wrap(~var,ncol=2)+
   theme_economist() 
 
-ggplot(data=df %>% filter(shock==impulse[2]),aes(y=value,x=cons))+
+ggplot(data=df %>% filter(shock==impulse[2]),aes(y=pred,x=cons))+
   geom_line(colour="blue")+
-  geom_line(aes(y=value_up),colour="red",linetype = "dashed")+
-  geom_line(aes(y=value_low),colour="red",linetype = "dashed")+
-  geom_ribbon(aes(x=cons,ymin=value_low,ymax=value_up),alpha=.25,show.legend=FALSE)+
+  geom_line(aes(y=upper),colour="red",linetype = "dashed")+
+  geom_line(aes(y=lower),colour="red",linetype = "dashed")+
+  geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
   labs(title="Shock a la Tasa de Interés de México",x="",y="",subtitle="Funciones Impulso-Respuesta")+
-  facet_wrap(~nombres,ncol=2)+
+  facet_wrap(~var,ncol=2)+
   theme_economist() 
 
 
 ##### Descomposición de la varianza ####
 var_dec <- get_fevd(model)
 ##### Predicción ####
-pred <- get_pred(model)
+pred <- get_pred(model,pca) 
 
-ggplot(data=pred ,aes(y=pred_puntual,x=cons))+
+ggplot(data=pred ,aes(y=pred,x=cons))+
   geom_line(colour="blue")+
   geom_line(aes(y=lower),colour="red",linetype = "dashed")+
   geom_line(aes(y=upper),colour="red",linetype = "dashed")+
   geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
   labs(title="Prediccion",x="",y="")+
-  facet_wrap(~variable,ncol=2)+
+  facet_wrap(~var,ncol=2)+
   theme_economist() 

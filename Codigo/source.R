@@ -23,7 +23,10 @@ estandarizacion  <- function(vec,freq,s,des =FALSE, int= FALSE,n=NULL){
     if(is.null(n)){n     <- help1 %>% ndiffs(test="adf")}
     if(n != 0){help1  <- help1 %>% diff(differences = n)}
     help1 <- .25 * log(1+help1/100)
-    serie <- help1  %>% scale %>%  ts(start=time(help1)[1],frequency = 4) %>% window(start=1991.0,end=2013.50)
+    serie <- help1  %>%
+      scale %>%
+      ts(start=time(help1)[1],frequency = 4) %>%
+      window(start=1991.0,end=2013.50)
     
   } else {                                                
     if(des==TRUE){help1 <- help1    %>%  seasonal::seas() %>% seasonal::final()}
@@ -37,8 +40,11 @@ estandarizacion  <- function(vec,freq,s,des =FALSE, int= FALSE,n=NULL){
   }
   return(serie)}
 #Consigue un tibble con irf de un var
-get_irf <- function(model,impulse,response=NULL,nombres){
-  #
+get_irf <- function(model,impulse,pca){
+  
+  response <- model$y %>% as_tibble %>% names
+  nombres  <- model$y %>% as_tibble %>% names
+  
   impulse_response <- vars::irf(model,impulse=impulse,response=response)
   
   conv <- response %>% 
@@ -49,46 +55,63 @@ get_irf <- function(model,impulse,response=NULL,nombres){
   get_data <- function(i){
     resp <- impulse_response$irf[[i]] %>% as_tibble %>%
       mutate(cons=as.numeric(row.names(.))) %>% 
-      gather_("var","value",nombres) %>% 
+      gather_("var","pred",nombres) %>% 
       left_join(conv,by="var") %>% 
-      mutate(shock=rep(impulse[i],nrow(.)))
+      dplyr::select(-nombres)
     
     resp_up <- impulse_response$Upper[[i]] %>% as_tibble %>%
       mutate(cons=as.numeric(row.names(.)))%>% 
-      gather_("var","value_up",nombres) %>% 
-      left_join(conv,by="var")
+      gather_("var","upper",nombres) %>% 
+      left_join(conv,by="var") %>% 
+      dplyr::select(-nombres)
     
     resp_low <- impulse_response$Lower[[i]]%>% as_tibble %>%
       mutate(cons=as.numeric(row.names(.)))%>% 
-      gather_("var","value_low",nombres) %>% 
-      left_join(conv,by="var")
+      gather_("var","lower",nombres) %>% 
+      left_join(conv,by="var") %>% 
+      dplyr::select(-nombres)
     
-    df <- left_join(resp,resp_up, by = c("cons", "var", "nombres")) %>% 
-      left_join(resp_low, by = c("cons", "var", "nombres"))
+    comp <- resp %>% 
+      left_join(resp_up, by = c("cons", "var")) %>% 
+      left_join(resp_low, by = c("cons", "var")) %>% 
+      pred_fac(pca)
+    
+    real_var<- resp %>% 
+      left_join(resp_up, by = c("cons", "var")) %>% 
+      left_join(resp_low, by = c("cons", "var")) %>% 
+      dplyr::filter(!grepl("PC",var))
+    
+    df <- comp %>% 
+      full_join(real_var, 
+                by = c("cons", "var", "pred", "lower", "upper")) %>% 
+      mutate(shock=rep(impulse[i],nrow(.)))
   }
   
   df <- do.call(
     "rbind",
-    lapply(1:length(impulse_response$irf),get_data) 
-  )
+    lapply(1:length(impulse_response$irf),get_data) ) %>% 
+    dplyr::select(shock,var,cons,pred,upper,lower)
   return(df)
 }
 #Consigue un tibble con predicciones de un var
-get_pred <-  function(model){
+get_pred <-  function(model,pca){
   pred <- predict(model)
   
   get_data <- function(i){
     df <- pred$fcst[[i]] %>% as_tibble %>%
       mutate(cons=as.numeric(row.names(.))) %>% 
-      rename(pred_puntual=fcst) %>% 
-      mutate(variable=names(pred$fcst[i]))
+      rename(pred=fcst) %>% 
+      mutate(var=names(pred$fcst[i]))
   }
   df <- do.call(
     "rbind",
     lapply(1:length(pred$fcst),get_data) 
-  )
-  
-  return(df)
+  ) %>% dplyr::select(-CI)
+  df1 <- pred_fac(df,pca) %>% 
+    full_join(df %>% 
+                filter(!grepl("PC",var)),
+              by = c("cons", "var", "pred", "lower", "upper"))
+  return(df1)
 }
 #Consigue un tibble con descomposición de varianza de un var
 get_fevd <- function(model){
@@ -103,4 +126,51 @@ get_fevd <- function(model){
     lapply(1:length(var_dec),get_data) 
   )
   
+}
+#Consigue un tibble con predicciones de las variables reales
+pred_fac<- function(pred,pca){
+  df_punt <- pred %>% 
+    filter(grepl("PC",var)) %>% 
+    dplyr::select(var,pred,cons) %>% 
+    spread(key=var,
+           value=pred) %>% 
+    dplyr::select(-cons) %>% 
+    as.matrix %*% t(pca$rotation[,1:nfac]) %>%  
+    as_tibble %>% 
+    mutate(cons=row.names(.) %>% as.numeric) %>% 
+    gather(key=var,
+           value=pred,
+           -cons) 
+  
+  df_lower <- pred %>% 
+    filter(grepl("PC",var)) %>% 
+    dplyr::select(var,lower,cons) %>% 
+    spread(key=var,
+           value=lower) %>% 
+    dplyr::select(-cons) %>%
+    as.matrix %*% t(pca$rotation[,1:nfac]) %>%  
+    as_tibble %>% 
+    mutate(cons=row.names(.) %>% as.numeric)%>% 
+    gather(key=var,
+           value=lower,
+           -cons) 
+  
+  df_upper <- pred %>% 
+    filter(grepl("PC",var)) %>% 
+    dplyr::select(var,upper,cons) %>% 
+    spread(key=var,
+           value=upper) %>% 
+    dplyr::select(-cons) %>%
+    as.matrix %*% t(pca$rotation[,1:nfac]) %>%  
+    as_tibble %>% 
+    mutate(cons=row.names(.) %>% as.numeric) %>% 
+    gather(key=var,
+           value=upper,
+           -cons) 
+  
+  df <- df_punt %>% 
+    full_join(df_lower, by = c("cons", "var")) %>% 
+    full_join(df_upper, by = c("cons", "var"))
+  
+  return(df)
 }
