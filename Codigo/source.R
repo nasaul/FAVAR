@@ -11,7 +11,7 @@ usePackage <- function(p) {
   #4.Calcula el numero de diferencias para ser estacionaria (Augmented Dickey-Fuller)
   #5.Aplica el numero de diferencias
   #6.Estandariza los datos
-estandarizacion  <- function(vec,freq,s,des =FALSE, int= FALSE,n=NULL){
+standar  <- function(vec,freq,s,des =FALSE, int= FALSE,n=NULL){
   serie <- ts(vec,frequency = freq ,start = s) 
   
   if (freq !=4){
@@ -40,12 +40,12 @@ estandarizacion  <- function(vec,freq,s,des =FALSE, int= FALSE,n=NULL){
   }
   return(serie)}
 #Consigue un tibble con irf de un var
-get_irf <- function(model,impulse,pca){
+get_irf <- function(model,impulse,pca,n.ahead=10){
   
   response <- model$y %>% as_tibble %>% names
   nombres  <- model$y %>% as_tibble %>% names
   
-  impulse_response <- vars::irf(model,impulse=impulse,response=response)
+  impulse_response <- vars::irf(model,impulse=impulse,response=response,n.ahead=n.ahead)
   
   conv <- response %>% 
     as_tibble %>% rename(var=value) %>% 

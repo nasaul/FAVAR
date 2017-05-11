@@ -1,3 +1,19 @@
+---
+title     : "Factor Augmented VAR"
+subtitle  : "Caso de México"
+author    : "Saúl Caballero"
+output    : 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    theme: journal
+    highlight: tango
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
 setwd("/home/saul/Repos/FAVAR")
 source("./Codigo/source.R")
 usePackage("ggthemes")
@@ -187,33 +203,88 @@ MXN_USD <- read_csv("./Datos/MXN_USD1.csv")[1:288,2] %>%
 #  theme_economist() 
 ##### Componentes Principales ####
 info <- cbind(MX_CPI,MX_DRATE,MX_EXP,MX_GCE,MX_GDP,MX_GDPDEF,MX_HCE,MX_IMPPRICE,MX_INDP,MX_IPC,MX_M1,MX_M2,MX_M3,MX_M4,MX_MANUFP,MX_MINP,MX_MMRATE,MXN_USD,MX_PETRP,MX_PPI,MX_WAGES,US_BPLRATE,US_CPI,US_DRATE,US_EMP,US_EXP,US_FFRATE,US_GCE,US_GDP,US_GDPDEF,US_GNI,US_HCE,US_IMP,US_IMPPRICE,US_INDP,US_M1,US_M2,US_M3,US_MB,US_PETRP,US_PPI,US_RHP,US_SP,US_TBRATE,US_WAGES) %>% as_tibble
-nfac <- 10
+```
+***
+#Introducción
+***
+¿Por qué usar un VAR con factores?
+
+* Una de las principales desventajas de los VAR's es que solo pueden usar un pequeño número de variables, el cual es 
+improbable que utilice toda la información que usan los bancos centrales. Esto se puede ocasionar:
+    + Los bancos centrales tienen información no reflejada en el análisis de un VAR, por lo tanto la medida de la política monetaria puede estar contaminada, por ejemplo:
+        + **Rompecabezas de los precios**: El resultado convencional de un VAR es que **ante una política monetaria restrictiva, la inflación aumenta un poco** , esto va en contra de la teoría economíca clásica prediciría. Un ejemplo de mecanismo que podría estar ocurriendo es que si el banco central restringe su política ante la anticipación de inflación futura y estás señales no las puede tomar en cuenta el modelo, entonces para lo que el VAR parece ser un choque en la política monetaria puede ser realmente una respuesta del banco central a nueva información de la inflación. 
+  + Se pueden hacer funciones impulso-respuesta para todas las variables que uno considere importantes.
+
+***
+
+#Procesamiento de los datos
+***
+
+Antes de cualquier transformación, las variables fueron desestacionalizadas con los asientos *X-13 Arima*.
+
+## Tasas de interés
+
+Las tasas de interés se modifican de la siguiente forma:
+
+1. Se calcula la primera diferencia.
+2. Se calcula $i^*$ de la siguiene forma: $i^*=\frac{1}{4} ln(1+\frac{i}{100})$.
+3. Se estandariza la variable: $i^{estandar}= \frac{i^*-\bar{i^*}}{\sigma_{i^*}}$.
+
+## Otras variables
+
+Las demás variables se modifican de la siguiente forma:
+
+1. Se calcula el logarítmo de la variable.
+2. Se calcula la primera diferencia 
+3. Se estandariza la variable: $x^{estandar}= \frac{x^*-\bar{x^*}}{\sigma_{x^*}}$.
+
+***
+
+#FAVAR 
+***
+
+Primero definimos las variables:
+
+* Se define las variables observables $Y_t$, en este caso la tasa de interés de México y Estados Unidos.
+
+* Se definen las variables que queremos considerar en el modelo $X_t$. Posteriormente, se obtienen los componentes principales de estas variables  y se les denomina $F_t$.
+
+El **FAVAR** se define de la siguiente forma:
+
+$$\begin{bmatrix}
+F_t\\
+Y_t
+\end{bmatrix}=
+\Phi(L) \begin{bmatrix}
+F_{t-1}\\
+Y_{t-1}
+\end{bmatrix}+v_t$$
+
+donde $\Phi(L)$ son los lags del polinomio de orden finito de orden $d$. El término del error $v_t$ tiene media cero y matriz de covarianza $Q$.
+
+***
+
+#Modelo elegido 
+***
+
+##FAVAR con 9 factores {.tabset .tabset-fade}
+```{r,echo=FALSE}
+nfac <- 9
 comp <- info %>% prcomp(scale=T) %>% predict %>% .[,1:nfac] %>% as_tibble
 pca <- info %>% prcomp(scale=T) 
-##### VAR ####
-## Las variables se orden la de las más exógenas a las más endógenas
-## Estados Unidos
-### 1. Tasa de interés 
-### 2. Crecimiento Monetario
-### 3. Inflación 
-### 4. Actividad Real
-##  5. Variable dummy (Primer y segundo trimestre de 1995)
-##  6. Tipo de cambio nominal peso/dólar
-## México
-### 7. Tasa de interés 
-### 8. Crecimiento Monetario
-### 9. Inflación 
-### 10.Actividad Real
 y <- comp %>% 
   mutate(Int_US=US_CBRATE,
          Int_MX=MX_TBRATE)
-
+```
+```{r,echo=FALSE}
 model <- VAR(y)
-##### Impulso respuesta ####
+
 impulse  <- c("Int_US","Int_MX")
 
 df <- get_irf(model,impulse,pca) 
-
+```
+###Tasa de interés de Estados Unidos.
+```{r,echo=FALSE}
 ggplot(data=df %>% 
          filter(shock==impulse[1]) %>% 
          filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
@@ -228,10 +299,14 @@ ggplot(data=df %>%
   geom_line(aes(y=upper),colour="red",linetype = "dashed")+
   geom_line(aes(y=lower),colour="red",linetype = "dashed")+
   geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
-  labs(title="Shock a la Tasa de Interés de E.U.A.",x="",y="",subtitle="Funciones Impulso-Respuesta")+
+  labs(title="Choque a la Tasa de Interés de E.U.A.",x="",y="",subtitle="Funciones Impulso-Respuesta")+
   facet_wrap(~vars,ncol=2)+
   theme_economist() 
+```
+***
 
+###Tasa de interés de México.
+```{r,echo=FALSE}
 ggplot(data=df %>% 
          filter(shock==impulse[2]) %>% 
          filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
@@ -246,14 +321,14 @@ ggplot(data=df %>%
   geom_line(aes(y=upper),colour="red",linetype = "dashed")+
   geom_line(aes(y=lower),colour="red",linetype = "dashed")+
   geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
-  labs(title="Shock a la Tasa de Interés de México",x="",y="",subtitle="Funciones Impulso-Respuesta")+
+  labs(title="Choque a la Tasa de Interés de México",x="",y="",subtitle="Funciones Impulso-Respuesta")+
   facet_wrap(~vars,ncol=2)+
   theme_economist() 
+```
+***
 
-
-##### Descomposición de la varianza ####
-#var_dec <- get_fevd(model)
-##### Predicción ####
+###Predicciones
+```{r, echo=FALSE}
 pred <- get_pred(model,pca) 
 
 ggplot(data= pred %>% 
@@ -265,9 +340,246 @@ ggplot(data= pred %>%
            .$var == "Int_MX"  ~ "Tasa de Interés"
          )) ,aes(y=pred,x=cons))+
   geom_line(colour="blue")+
-  geom_line(aes(y=lower),colour="red",linetype = "dashed")+
-  geom_line(aes(y=upper),colour="red",linetype = "dashed")+
-  geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
   labs(title="Prediccion",x="",y="")+
   facet_wrap(~vars,ncol=2)+
   theme_economist() 
+
+```
+
+***
+
+#Otros modelos {.tabset .tabset-fade}
+```{r,echo=FALSE}
+nfac <- 10
+comp <- info %>% prcomp(scale=T) %>% predict %>% .[,1:nfac] %>% as_tibble
+pca <- info %>% prcomp(scale=T) 
+y <- comp %>% 
+  mutate(Int_US=US_CBRATE,
+         Int_MX=MX_TBRATE)
+```
+## FAVAR(1) con 10 factores {.tabset .tabset-fade}
+```{r,echo=FALSE}
+model <- VAR(y)
+
+impulse  <- c("Int_US","Int_MX")
+
+df <- get_irf(model,impulse,pca) 
+```
+###Tasa de interés de Estados Unidos.
+```{r,echo=FALSE}
+ggplot(data=df %>% 
+         filter(shock==impulse[1]) %>% 
+         filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
+         mutate(vars= case_when(
+           .$var == "MXN_USD" ~ "Tipo de Cambio",
+           .$var == "MX_GDP"  ~ "PIB",
+           .$var == "MX_CPI"  ~ "Inflación",
+           .$var == "Int_MX"  ~ "Tasa de Interés"
+         )),
+       aes(y=pred,x=cons))+
+  geom_line(colour="blue")+
+  geom_line(aes(y=upper),colour="red",linetype = "dashed")+
+  geom_line(aes(y=lower),colour="red",linetype = "dashed")+
+  geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
+  labs(title="Choque a la Tasa de Interés de E.U.A.",x="",y="",subtitle="Funciones Impulso-Respuesta")+
+  facet_wrap(~vars,ncol=2)+
+  theme_economist() 
+```
+
+###Tasa de interés de México.
+```{r,echo=FALSE}
+ggplot(data=df %>% 
+         filter(shock==impulse[2]) %>% 
+         filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
+         mutate(vars= case_when(
+           .$var == "MXN_USD" ~ "Tipo de Cambio",
+           .$var == "MX_GDP"  ~ "PIB",
+           .$var == "MX_CPI"  ~ "Inflación",
+           .$var == "Int_MX"  ~ "Tasa de Interés"
+         )),
+       aes(y=pred,x=cons))+
+  geom_line(colour="blue")+
+  geom_line(aes(y=upper),colour="red",linetype = "dashed")+
+  geom_line(aes(y=lower),colour="red",linetype = "dashed")+
+  geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
+  labs(title="Choque a la Tasa de Interés de México",x="",y="",subtitle="Funciones Impulso-Respuesta")+
+  facet_wrap(~vars,ncol=2)+
+  theme_economist() 
+```
+
+###Predicciones
+```{r, echo=FALSE}
+pred <- get_pred(model,pca) 
+
+ggplot(data= pred %>% 
+         filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
+         mutate(vars= case_when(
+           .$var == "MXN_USD" ~ "Tipo de Cambio",
+           .$var == "MX_GDP"  ~ "PIB",
+           .$var == "MX_CPI"  ~ "Inflación",
+           .$var == "Int_MX"  ~ "Tasa de Interés"
+         )) ,aes(y=pred,x=cons))+
+  geom_line(colour="blue")+
+  labs(title="Prediccion",x="",y="")+
+  facet_wrap(~vars,ncol=2)+
+  theme_economist() 
+
+```
+
+
+## FAVAR(2) con 10 factores {.tabset .tabset-fade}
+
+```{r,echo=FALSE}
+model <- VAR(y,p=2)
+
+impulse  <- c("Int_US","Int_MX")
+
+df <- get_irf(model,impulse,pca) 
+```
+###Tasa de interés de Estados Unidos.
+```{r,echo=FALSE}
+ggplot(data=df %>% 
+         filter(shock==impulse[1]) %>% 
+         filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
+         mutate(vars= case_when(
+           .$var == "MXN_USD" ~ "Tipo de Cambio",
+           .$var == "MX_GDP"  ~ "PIB",
+           .$var == "MX_CPI"  ~ "Inflación",
+           .$var == "Int_MX"  ~ "Tasa de Interés"
+         )),
+       aes(y=pred,x=cons))+
+  geom_line(colour="blue")+
+  geom_line(aes(y=upper),colour="red",linetype = "dashed")+
+  geom_line(aes(y=lower),colour="red",linetype = "dashed")+
+  geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
+  labs(title="Choque a la Tasa de Interés de E.U.A.",x="",y="",subtitle="Funciones Impulso-Respuesta")+
+  facet_wrap(~vars,ncol=2)+
+  theme_economist() 
+```
+
+###Tasa de interés de México.
+```{r,echo=FALSE}
+ggplot(data=df %>% 
+         filter(shock==impulse[2]) %>% 
+         filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
+         mutate(vars= case_when(
+           .$var == "MXN_USD" ~ "Tipo de Cambio",
+           .$var == "MX_GDP"  ~ "PIB",
+           .$var == "MX_CPI"  ~ "Inflación",
+           .$var == "Int_MX"  ~ "Tasa de Interés"
+         )),
+       aes(y=pred,x=cons))+
+  geom_line(colour="blue")+
+  geom_line(aes(y=upper),colour="red",linetype = "dashed")+
+  geom_line(aes(y=lower),colour="red",linetype = "dashed")+
+  geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
+  labs(title="Choque a la Tasa de Interés de México",x="",y="",subtitle="Funciones Impulso-Respuesta")+
+  facet_wrap(~vars,ncol=2)+
+  theme_economist() 
+```
+
+###Predicciones
+```{r, echo=FALSE}
+pred <- get_pred(model,pca) 
+
+ggplot(data= pred %>% 
+         filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
+         mutate(vars= case_when(
+           .$var == "MXN_USD" ~ "Tipo de Cambio",
+           .$var == "MX_GDP"  ~ "PIB",
+           .$var == "MX_CPI"  ~ "Inflación",
+           .$var == "Int_MX"  ~ "Tasa de Interés"
+         )) ,aes(y=pred,x=cons))+
+  geom_line(colour="blue")+
+  labs(title="Prediccion",x="",y="")+
+  facet_wrap(~vars,ncol=2)+
+  theme_economist() 
+
+```
+```{r,echo=FALSE}
+nfac <- 9
+comp <- info %>% prcomp(scale=T) %>% predict %>% .[,1:nfac] %>% as_tibble
+pca <- info %>% prcomp(scale=T) 
+y <- comp %>% 
+  mutate(Int_US=US_CBRATE,
+         Int_MX=MX_TBRATE)
+```
+
+## FAVAR(2) con 9 factores {.tabset .tabset-fade}
+
+```{r,echo=FALSE}
+nfac <- 9
+comp <- info %>% prcomp(scale=T) %>% predict %>% .[,1:nfac] %>% as_tibble
+pca <- info %>% prcomp(scale=T) 
+y <- comp %>% 
+  mutate(Int_US=US_CBRATE,
+         Int_MX=MX_TBRATE)
+```
+
+```{r,echo=FALSE}
+model <- VAR(y,p=2)
+
+impulse  <- c("Int_US","Int_MX")
+
+df <- get_irf(model,impulse,pca) 
+```
+###Tasa de interés de Estados Unidos.
+```{r,echo=FALSE}
+ggplot(data=df %>% 
+         filter(shock==impulse[1]) %>% 
+         filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
+         mutate(vars= case_when(
+           .$var == "MXN_USD" ~ "Tipo de Cambio",
+           .$var == "MX_GDP"  ~ "PIB",
+           .$var == "MX_CPI"  ~ "Inflación",
+           .$var == "Int_MX"  ~ "Tasa de Interés"
+         )),
+       aes(y=pred,x=cons))+
+  geom_line(colour="blue")+
+  geom_line(aes(y=upper),colour="red",linetype = "dashed")+
+  geom_line(aes(y=lower),colour="red",linetype = "dashed")+
+  geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
+  labs(title="Choque a la Tasa de Interés de E.U.A.",x="",y="",subtitle="Funciones Impulso-Respuesta")+
+  facet_wrap(~vars,ncol=2)+
+  theme_economist() 
+```
+
+###Tasa de interés de México.
+```{r,echo=FALSE}
+ggplot(data=df %>% 
+         filter(shock==impulse[2]) %>% 
+         filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
+         mutate(vars= case_when(
+           .$var == "MXN_USD" ~ "Tipo de Cambio",
+           .$var == "MX_GDP"  ~ "PIB",
+           .$var == "MX_CPI"  ~ "Inflación",
+           .$var == "Int_MX"  ~ "Tasa de Interés"
+         )),
+       aes(y=pred,x=cons))+
+  geom_line(colour="blue")+
+  geom_line(aes(y=upper),colour="red",linetype = "dashed")+
+  geom_line(aes(y=lower),colour="red",linetype = "dashed")+
+  geom_ribbon(aes(x=cons,ymin=lower,ymax=upper),alpha=.25,show.legend=FALSE)+
+  labs(title="Choque a la Tasa de Interés de México",x="",y="",subtitle="Funciones Impulso-Respuesta")+
+  facet_wrap(~vars,ncol=2)+
+  theme_economist() 
+```
+
+###Predicciones
+```{r, echo=FALSE}
+pred <- get_pred(model,pca) 
+
+ggplot(data= pred %>% 
+         filter(var %in% c("MXN_USD","MX_GDP","MX_CPI","Int_MX")) %>% 
+         mutate(vars= case_when(
+           .$var == "MXN_USD" ~ "Tipo de Cambio",
+           .$var == "MX_GDP"  ~ "PIB",
+           .$var == "MX_CPI"  ~ "Inflación",
+           .$var == "Int_MX"  ~ "Tasa de Interés"
+         )) ,aes(y=pred,x=cons))+
+  geom_line(colour="blue")+
+  labs(title="Prediccion",x="",y="")+
+  facet_wrap(~vars,ncol=2)+
+  theme_economist() 
+
+```
