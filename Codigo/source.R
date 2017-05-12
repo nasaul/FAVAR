@@ -20,9 +20,9 @@ standar  <- function(vec,freq,s,des =FALSE, int= FALSE,n=NULL){
   
   if(int == TRUE){    
     if(des == TRUE){  help1 <- help1 %>% seasonal::seas() %>% seasonal::final()}
+    help1 <- .25 * log(1+help1/100)
     if(is.null(n)){n     <- help1 %>% ndiffs(test="adf")}
     if(n != 0){help1  <- help1 %>% diff(differences = n)}
-    help1 <- .25 * log(1+help1/100)
     serie <- help1  %>%
       scale %>%
       ts(start=time(help1)[1],frequency = 4) %>%

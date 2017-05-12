@@ -226,8 +226,8 @@ Antes de cualquier transformación, las variables fueron desestacionalizadas con
 
 Las tasas de interés se modifican de la siguiente forma:
 
-1. Se calcula la primera diferencia.
-2. Se calcula $i^*$ de la siguiene forma: $i^*=\frac{1}{4} ln(1+\frac{i}{100})$.
+1. Se calcula $i^*$ de la siguiene forma: $i^*=\frac{1}{4} ln(1+\frac{i}{100})$.
+2. Se calcula la primera diferencia.
 3. Se estandariza la variable: $i^{estandar}= \frac{i^*-\bar{i^*}}{\sigma_{i^*}}$.
 
 ## Otras variables
